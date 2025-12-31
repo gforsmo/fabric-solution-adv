@@ -20,12 +20,12 @@ azure:
   # Default settings for all Fabric capacities, saves us having to right them out each time
   capacity_defaults:
     resource_group: "rg-av01" # Azure Resource Group for all capacities
-    region: "uksouth"
+    region: "westeurope"
     sku: "F2"
     capacity_admins: "${SPN_OBJECT_ID}" # Capacity administrators loaded from environment variable (comma-separated Object IDs)
 
 github:
-  organization: "geirfo"
+  organization: "gforsmo"
   repository: "fabric-solution-adv"
   branch: "main"
   provider: "GitHub"
