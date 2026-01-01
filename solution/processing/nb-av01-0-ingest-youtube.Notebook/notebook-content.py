@@ -7,7 +7,18 @@
 # META     "name": "jupyter",
 # META     "jupyter_kernel_name": "python3.11"
 # META   },
-# META   "dependencies": {}
+# META   "dependencies": {
+# META     "lakehouse": {
+# META       "default_lakehouse": "238bc8c5-a93d-4924-8bd6-d50d1cdbbb44",
+# META       "default_lakehouse_name": "lh_av01_bronze",
+# META       "default_lakehouse_workspace_id": "d5c8a76a-4cd6-4678-bacb-ad4245e722f6",
+# META       "known_lakehouses": [
+# META         {
+# META           "id": "238bc8c5-a93d-4924-8bd6-d50d1cdbbb44"
+# META         }
+# META       ]
+# META     }
+# META   }
 # META }
 
 # MARKDOWN ********************
@@ -190,7 +201,7 @@ METADATA = {
 def get_secret_from_akv()-> str: 
     """Get API key from Azure Key Vault"""
 
-    akv_name= 'https://av01-akv-restapi-keys.vault.azure.net/' 
+    akv_name= 'https://av01-akv-restapi-mykeys.vault.azure.net/' 
     secret_name = 'data-v3-api-key'
     
     api_key = notebookutils.credentials.getSecret(akv_name,secret_name)
