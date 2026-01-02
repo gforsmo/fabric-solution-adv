@@ -1,0 +1,6 @@
+CREATE USER [geir.forsmo.atea@siva.no]
+    WITH SID = 0x2BFA7779C0DF834490469354FD0925E9, TYPE = E;
+
+
+GO
+
