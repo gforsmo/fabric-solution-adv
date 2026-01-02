@@ -1,0 +1,11 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/gitIntegration/platformProperties/2.0.0/schema.json",
+  "metadata": {
+    "type": "Notebook",
+    "displayName": "nb-av01-lhcreate-silver"
+  },
+  "config": {
+    "version": "2.0",
+    "logicalId": "d8d911a2-46a2-8d8a-4007-b39c53b4a92d"
+  }
+}
