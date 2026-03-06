@@ -29,28 +29,23 @@ def create_workspace(workspace_config):
     Create a Fabric workspace.
 
     Args:
-        workspace_config: Dict with 'name', 'capacity' (name) and 'capacity_id' (GUID) keys
+        workspace_config: Dict with 'name' and 'capacity' keys
 
     Returns:
         str: Workspace ID if successful, None otherwise
     """
-    workspace_name = workspace_config['name']
-    capacity_id    = workspace_config.get('capacity_id')
+    workspace_name  = workspace_config['name']
+    capacity_name   = workspace_config.get('capacity')
 
-    print(f"      Capacity name: {workspace_config.get('capacity')}")
-    print(f"      Capacity ID  : {capacity_id}")
+    print(f"      Capacity name: {capacity_name}")
 
     if workspace_exists(workspace_name):
         print(f"      [SKIP] '{workspace_name}' already exists")
         return get_workspace_id(workspace_name)
 
-    if not capacity_id:
-        print(f"      [FAIL] No capacity_id provided — cannot create workspace")
-        return None
-
     result = run_command([get_fabric_cli_path(), 'create',
                           f'{workspace_name}.Workspace',
-                          '-P', f'capacityId={capacity_id}'])
+                          '-P', f'capacityName={capacity_name}'])
 
     if result.returncode != 0:
         print(f"ERROR: Failed to create {workspace_name}")
@@ -69,15 +64,7 @@ def create_workspace(workspace_config):
 
 
 def get_workspace_role_assignments(workspace_id):
-    """
-    Get existing role assignments for a workspace.
-
-    Args:
-        workspace_id: Workspace UUID
-
-    Returns:
-        dict: Dictionary mapping principal IDs to their roles, or empty dict if failed
-    """
+    """Get existing role assignments for a workspace."""
     result = run_command([get_fabric_cli_path(), 'api', '-X', 'get',
                           f'workspaces/{workspace_id}/roleAssignments'])
 
