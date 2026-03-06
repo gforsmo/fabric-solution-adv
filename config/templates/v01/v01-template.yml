@@ -3,7 +3,7 @@
 # We'll be expanding this template as move through the project!
 
 # Solution Version - important! This will be injected into all resource names (e.g., av01, av02, av03)
-solution_version: "av01"
+solution_version: "av02"
 
 # Azure Configuration
 azure:
