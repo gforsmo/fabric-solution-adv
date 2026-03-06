@@ -29,20 +29,28 @@ def create_workspace(workspace_config):
     Create a Fabric workspace.
 
     Args:
-        workspace_config: Dict with 'name' and 'capacity' keys
+        workspace_config: Dict with 'name', 'capacity' (name) and 'capacity_id' (GUID) keys
 
     Returns:
         str: Workspace ID if successful, None otherwise
     """
     workspace_name = workspace_config['name']
+    capacity_id    = workspace_config.get('capacity_id')
+
+    print(f"      Capacity name: {workspace_config.get('capacity')}")
+    print(f"      Capacity ID  : {capacity_id}")
 
     if workspace_exists(workspace_name):
-        print(f" {workspace_name} exists")
+        print(f"      [SKIP] '{workspace_name}' already exists")
         return get_workspace_id(workspace_name)
 
-    # Create workspace and check if successful
+    if not capacity_id:
+        print(f"      [FAIL] No capacity_id provided — cannot create workspace")
+        return None
+
     result = run_command([get_fabric_cli_path(), 'create',
-                         f'{workspace_name}.Workspace', '-P', f'capacityname={workspace_config["capacity"]}'])
+                          f'{workspace_name}.Workspace',
+                          '-P', f'capacityId={capacity_id}'])
 
     if result.returncode != 0:
         print(f"ERROR: Failed to create {workspace_name}")
@@ -50,14 +58,12 @@ def create_workspace(workspace_config):
         print(f"  stderr: {result.stderr}")
         return None
 
-    print(f" Created {workspace_name}")
-
-    # Wait for workspace to be provisioned
+    print(f"      Created '{workspace_name}'")
     time.sleep(5)
-    workspace_id = get_workspace_id(workspace_name)
 
+    workspace_id = get_workspace_id(workspace_name)
     if not workspace_id:
-        print(f"  Warning: Workspace created but ID could not be retrieved")
+        print(f"      [WARN] Workspace created but ID could not be retrieved")
 
     return workspace_id
 
@@ -72,7 +78,8 @@ def get_workspace_role_assignments(workspace_id):
     Returns:
         dict: Dictionary mapping principal IDs to their roles, or empty dict if failed
     """
-    result = run_command([get_fabric_cli_path(), 'api', '-X', 'get', f'workspaces/{workspace_id}/roleAssignments'])
+    result = run_command([get_fabric_cli_path(), 'api', '-X', 'get',
+                          f'workspaces/{workspace_id}/roleAssignments'])
 
     if result.returncode != 0:
         return {}
@@ -81,8 +88,8 @@ def get_workspace_role_assignments(workspace_id):
         response_json = json.loads(result.stdout)
         if response_json.get('status_code') == 200:
             assignments = response_json.get('text', {}).get('value', [])
-            # Create a mapping of principal ID to role
-            return {assignment['principal']['id']: assignment['role'] for assignment in assignments}
+            return {assignment['principal']['id']: assignment['role']
+                    for assignment in assignments}
     except (json.JSONDecodeError, KeyError):
         pass
 
@@ -97,29 +104,22 @@ def assign_permissions(workspace_id, permissions, security_groups):
         workspace_id: Workspace UUID
         permissions: List of dicts with 'group' and 'role' keys
         security_groups: Dict mapping group names to group IDs
-
-    Example:
-        permissions = [{'group': 'SG_AV_Engineers', 'role': 'Contributor'}]
-        security_groups = {'SG_AV_Engineers': 'guid-here'}
     """
     time.sleep(10)
 
-    # Get existing role assignments
     existing_assignments = get_workspace_role_assignments(workspace_id)
 
     for permission in permissions:
-        group_id = security_groups.get(permission.get('group'))
+        group_id     = security_groups.get(permission.get('group'))
         desired_role = permission.get('role')
 
-        # Check if group already has a role assigned
         if group_id in existing_assignments:
             existing_role = existing_assignments[group_id]
             if existing_role == desired_role:
-                print(f"   {permission['group']} already has {desired_role} role")
-                continue
+                print(f"      [SKIP] {permission['group']} already has {desired_role} role")
             else:
-                print(f"  Warning: {permission['group']} already has {existing_role} role (wanted {desired_role})")
-                continue
+                print(f"      [WARN] {permission['group']} already has {existing_role} role (wanted {desired_role})")
+            continue
 
         request_body = {
             "principal": {
@@ -127,30 +127,28 @@ def assign_permissions(workspace_id, permissions, security_groups):
                 "type": "Group",
                 "groupDetails": {"groupType": "SecurityGroup"}
             },
-            "role": permission.get('role')
+            "role": desired_role
         }
 
-        assign_response = run_command([get_fabric_cli_path(
-        ), 'api', '-X', 'post', f'workspaces/{workspace_id}/roleAssignments', '-i', json.dumps(request_body)])
+        assign_response = run_command([get_fabric_cli_path(), 'api', '-X', 'post',
+                                       f'workspaces/{workspace_id}/roleAssignments',
+                                       '-i', json.dumps(request_body)])
 
-        # Handle empty or invalid JSON response
         if not assign_response.stdout.strip():
-            print(f"  ERROR: Failed to assign {permission['role']} to {permission['group']}: Empty response")
-            print(f"    stderr: {assign_response.stderr}")
+            print(f"      [FAIL] Empty response assigning {desired_role} to {permission['group']}")
+            print(f"             stderr: {assign_response.stderr}")
             continue
 
         try:
             response_json = json.loads(assign_response.stdout)
-        except json.JSONDecodeError as e:
-            print(f"  ERROR: Failed to assign {permission['role']} to {permission['group']}: Invalid JSON")
-            print(f"    stdout: {assign_response.stdout}")
-            print(f"    stderr: {assign_response.stderr}")
+        except json.JSONDecodeError:
+            print(f"      [FAIL] Invalid JSON assigning {desired_role} to {permission['group']}")
+            print(f"             stdout: {assign_response.stdout}")
             continue
 
         if response_json.get('status_code') in [200, 201]:
-            print(
-                f"   Assigned {permission['role']} to {permission['group']}")
+            print(f"      [OK]  Assigned {desired_role} to {permission['group']}")
         else:
-            print(f"  ERROR: Failed to assign {permission['role']} to {permission['group']}")
-            print(f"    Status: {response_json.get('status_code')}")
-            print(f"    Response: {response_json.get('text', {})}")
+            print(f"      [FAIL] Failed to assign {desired_role} to {permission['group']}")
+            print(f"             Status  : {response_json.get('status_code')}")
+            print(f"             Response: {response_json.get('text', {})}")
