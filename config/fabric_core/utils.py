@@ -1,5 +1,4 @@
 """Utility functions for Fabric CLI operations."""
-
 import os
 import sys
 import yaml
@@ -23,6 +22,19 @@ def run_command(cmd):
 def call_azure_api(endpoint, method='get', body=None):
     """Call Azure ARM REST API via Fabric CLI and return status code and response body."""
     cmd = [get_fabric_cli_path(), 'api', endpoint, '-X', method, '-A', 'azure']
+    if body:
+        cmd.extend(['-i', json.dumps(body)])
+    response = run_command(cmd)
+    try:
+        parsed = json.loads(response.stdout)
+        return parsed.get('status_code', 0), parsed.get('text', {})
+    except (json.JSONDecodeError, KeyError):
+        return 0, {}
+
+
+def call_fabric_api(endpoint, method='get', body=None):
+    """Call Fabric REST API via Fabric CLI and return status code and response body."""
+    cmd = [get_fabric_cli_path(), 'api', endpoint, '-X', method]
     if body:
         cmd.extend(['-i', json.dumps(body)])
     response = run_command(cmd)
