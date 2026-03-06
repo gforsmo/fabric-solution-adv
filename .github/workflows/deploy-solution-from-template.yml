@@ -23,7 +23,7 @@ jobs:
       AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
       AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
       SPN_OBJECT_ID: ${{ secrets.SPN_OBJECT_ID }}
-      GITHUB_PAT: ${{ secrets.GH_PAT }}
+      GH_PAT: ${{ secrets.GH_PAT }}
       CONFIG_FILE: ${{ inputs.config_file }}
 
     steps:
