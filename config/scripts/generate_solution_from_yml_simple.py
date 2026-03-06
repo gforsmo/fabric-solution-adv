@@ -2,7 +2,7 @@
 # testing, logging, error-handling, validation, documentation, comments etc
 # for now I'm trying to make it as simple as possible to follow the logic
 # In future weeks, we'll refactor the code to make it more robust!
-'''
+
 import os
 import sys
 import time
