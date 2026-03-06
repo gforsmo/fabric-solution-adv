@@ -42,7 +42,7 @@ def get_or_create_git_connection(workspace_id, git_config):
             "parameters": [{"dataType": "Text", "name": "url", "value": github_url}]
         },
         "credentialDetails": {
-            "credentials": {"credentialType": "Key", "key": os.getenv('GITHUB_PAT')}
+            "credentials": {"credentialType": "Key", "key": os.getenv('GH_PAT')}  # Fixed: was GITHUB_PAT
         }
     }
 
@@ -174,12 +174,11 @@ def connect_workspace_to_git(workspace_id, workspace_name, directory_name, git_c
             status_json = json.loads(status_response.stdout)
             if status_json.get('status_code') == 200:
                 git_status = status_json.get('text', {})
-                # Check for connection indicators (either field means already connected)
                 if git_status.get('gitConnectionState') or git_status.get('remoteCommitHash'):
                     print(f" {workspace_name} already connected to Git")
                     return True
         except json.JSONDecodeError:
-            pass  # Continue with connection attempt if parsing fails
+            pass
 
     # Connect workspace to Git
     request_body = {
