@@ -3,76 +3,113 @@
 # for now I'm trying to make it as simple as possible to follow the logic
 # In future weeks, we'll refactor the code to make it more robust!
 
-import os
-import sys
+"""Capacity management module for Azure Fabric capacities."""
 import time
-
-from fabric_core import (
-    auth, bootstrap, create_workspace, assign_permissions,
-    get_or_create_git_connection, connect_workspace_to_git,
-    create_capacity, suspend_capacity
-)
-from fabric_core.utils import load_config
-
-# Ensure UTF-8 encoding for stdout to support Unicode characters (like checkmarks)
-if sys.stdout.encoding != 'utf-8':
-    sys.stdout.reconfigure(encoding='utf-8')
+from .utils import call_azure_api, call_fabric_api
 
 
-def main():
-    bootstrap()
-
-    config = load_config(
-        os.getenv('CONFIG_FILE', 'config/templates/v01/v01-template.yml'))
-
-    print("=== AUTHENTICATING ===")
-    if not auth():
-        print("\nERROR: Authentication failed. Cannot proceed.")
-        return
-
-    azure_config = config['azure']
-    subscription_id = azure_config['subscription_id']
-    capacity_defaults = azure_config.get('capacity_defaults', {})
-    security_groups = azure_config.get('security_groups', {})
-    git_config = config.get('github', {})
-
-    print("\n=== CREATING CAPACITIES ===")
-    for capacity_config in config.get('capacities', []):
-        resource_group = capacity_config.get(
-            'resource_group', capacity_defaults.get('resource_group'))
-        create_capacity(capacity_config, subscription_id,
-                        resource_group, capacity_defaults)
-
-    print("\n=== CREATING WORKSPACES ===")
-    github_connection_id = None
-
-    for workspace_config in config.get('workspaces', []):
-        workspace_id = create_workspace(workspace_config)
-
-        if 'permissions' in workspace_config and workspace_id:
-            assign_permissions(
-                workspace_id, workspace_config['permissions'], security_groups)
-
-        if 'connect_to_git_folder' in workspace_config and workspace_id and git_config:
-            if not github_connection_id:
-                github_connection_id = get_or_create_git_connection(
-                    workspace_id, git_config)
-
-            if github_connection_id:
-                connect_workspace_to_git(workspace_id, workspace_config['name'],
-                                         workspace_config['connect_to_git_folder'],
-                                         git_config, github_connection_id)
-
-    print("\n=== SUSPENDING CAPACITIES ===")
-    time.sleep(20)
-    for capacity_config in config.get('capacities', []):
-        resource_group = capacity_config.get(
-            'resource_group', capacity_defaults.get('resource_group'))
-        suspend_capacity(capacity_config['name'],
-                         subscription_id, resource_group)
-
-    print("\n Done")
+def get_capacity_id(capacity_name, subscription_id=None, resource_group=None):
+    """Get Fabric capacity GUID by name using Fabric API."""
+    status, response = call_fabric_api("/capacities")
+    if status == 200:
+        for cap in response.get('value', []):
+            if cap.get('displayName', '').lower() == capacity_name.lower():
+                cap_id = cap.get('id')
+                print(f"      Found '{capacity_name}' — ID: {cap_id}")
+                return cap_id
+    print(f"      [WARN] Could not find '{capacity_name}' via Fabric API (status: {status})")
+    return None
 
 
+def capacity_exists(capacity_name, subscription_id, resource_group):
+    """Check if a Fabric capacity exists in Azure."""
+    status, _ = call_azure_api(
+        f"/subscriptions/{subscription_id}/resourceGroups/{resource_group}/providers/Microsoft.Fabric/capacities/{capacity_name}?api-version=2023-11-01")
+    return status == 200
+
+
+def create_capacity(capacity_config, subscription_id, resource_group, defaults):
+    capacity_name = capacity_config['name']
+
+    print(f"  --> Creating capacity: {capacity_name}")
+    print(f"      Resource group : {resource_group}")
+    print(f"      Region         : {capacity_config.get('region', defaults.get('region'))}")
+    print(f"      SKU            : {capacity_config.get('sku', defaults.get('sku'))}")
+
+    print(f"      Checking if capacity exists...")
+    exists_status, exists_response = call_azure_api(
+        f"/subscriptions/{subscription_id}/resourceGroups/{resource_group}/providers/Microsoft.Fabric/capacities/{capacity_name}?api-version=2023-11-01")
+
+    if exists_status == 200:
+        print(f"      [SKIP] '{capacity_name}' already exists — resuming...")
+        resume_status, _ = call_azure_api(
+            f"/subscriptions/{subscription_id}/resourceGroups/{resource_group}/providers/Microsoft.Fabric/capacities/{capacity_name}/resume?api-version=2023-11-01", 'post')
+        print(f"      Resume status: {resume_status}")
+        capacity_id = get_capacity_id(capacity_name)
+        print(f"      Capacity ID  : {capacity_id}")
+        return capacity_id
+    elif exists_status == 404:
+        print(f"      Not found — will create.")
+    else:
+        print(f"      [WARN] Unexpected status: {exists_status} — {exists_response}")
+
+    # Build request body
+    admin_members = capacity_config.get('admin_members', defaults.get('capacity_admins', ''))
+    admin_members = admin_members if isinstance(admin_members, list) else [
+        admin_id.strip() for admin_id in admin_members.split(',') if admin_id.strip()]
+
+    request_body = {
+        "location": capacity_config.get('region', defaults.get('region')),
+        "sku": {"name": capacity_config.get('sku', defaults.get('sku')), "tier": "Fabric"},
+        "properties": {"administration": {"members": admin_members}}
+    }
+    print(f"      Admin members  : {admin_members}")
+    print(f"      Sending PUT request...")
+
+    status, response = call_azure_api(
+        f"/subscriptions/{subscription_id}/resourceGroups/{resource_group}/providers/Microsoft.Fabric/capacities/{capacity_name}?api-version=2023-11-01",
+        'put', request_body)
+
+    print(f"      Response status: {status}")
+
+    if status in [200, 201]:
+        print(f"      [OK] Created '{capacity_name}' — waiting 40s for provisioning...")
+        time.sleep(40)
+        capacity_id = get_capacity_id(capacity_name)
+        print(f"      Capacity ID  : {capacity_id}")
+        return capacity_id
+    elif status == 202:
+        print(f"      [OK] Accepted (async) '{capacity_name}' — waiting 60s...")
+        time.sleep(60)
+        capacity_id = get_capacity_id(capacity_name)
+        print(f"      Capacity ID  : {capacity_id}")
+        return capacity_id
+    else:
+        print(f"      [FAIL] Failed to create '{capacity_name}'")
+        print(f"      Response body: {response}")
+        return None
+
+
+def suspend_capacity(capacity_name, subscription_id, resource_group):
+    print(f"  --> Suspending capacity: {capacity_name}")
+
+    for attempt in range(1, 6):
+        print(f"      Attempt {attempt}/5...")
+        status, response = call_azure_api(
+            f"/subscriptions/{subscription_id}/resourceGroups/{resource_group}/providers/Microsoft.Fabric/capacities/{capacity_name}/suspend?api-version=2023-11-01",
+            'post')
+        print(f"      Response status: {status}")
+
+        if status in [200, 202]:
+            print(f"      [OK] Suspended '{capacity_name}'")
+            return True
+
+        print(f"      [WARN] Not suspended yet (status {status}) — {response}")
+        if attempt < 5:
+            print(f"      Waiting 60s before retry...")
+            time.sleep(60)
+
+    print(f"      [FAIL] Failed to suspend '{capacity_name}' after 5 attempts")
+    return False
 if __name__ == "__main__":
     main()
