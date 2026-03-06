@@ -64,17 +64,24 @@ def main():
     capacities = config.get('capacities', [])
     log_section(f"CREATING CAPACITIES  ({len(capacities)} total)")
 
+    # Build capacity name → GUID mapping for workspace creation
+    capacity_id_map = {}
+
     for capacity_config in capacities:
         resource_group = capacity_config.get(
             'resource_group', capacity_defaults.get('resource_group'))
-        log_step(f"Capacity: {capacity_config['name']}  (rg: {resource_group})")
+        cap_name = capacity_config['name']
+        log_step(f"Capacity: {cap_name}  (rg: {resource_group})")
         t = time.time()
-        result = create_capacity(capacity_config, subscription_id,
-                                 resource_group, capacity_defaults)
-        if result:
-            log_ok(f"Done ({elapsed(t)})")
+        capacity_id = create_capacity(capacity_config, subscription_id,
+                                      resource_group, capacity_defaults)
+        if capacity_id:
+            capacity_id_map[cap_name] = capacity_id
+            log_ok(f"Done — ID: {capacity_id} ({elapsed(t)})")
         else:
             log_fail(f"Failed ({elapsed(t)})")
+
+    log_info(f"Capacity ID map: {capacity_id_map}")
 
     # ── Workspaces ───────────────────────────────────────────────────────────
     workspaces = config.get('workspaces', [])
@@ -82,8 +89,16 @@ def main():
 
     github_connection_id = None
     for workspace_config in workspaces:
-        ws_name = workspace_config['name']
+        ws_name  = workspace_config['name']
+        cap_name = workspace_config.get('capacity')
+        cap_id   = capacity_id_map.get(cap_name)
+
+        # Inject capacity_id so create_workspace can use it
+        workspace_config['capacity_id'] = cap_id
+
         log_step(f"Workspace: {ws_name}")
+        log_info(f"Capacity name: {cap_name}")
+        log_info(f"Capacity ID  : {cap_id or 'NOT FOUND'}")
         t = time.time()
 
         workspace_id = create_workspace(workspace_config)
