@@ -10,6 +10,7 @@ from fabric_core import (
     get_or_create_git_connection, connect_workspace_to_git,
     create_capacity, suspend_capacity
 )
+from fabric_core.git_integration import update_workspace_from_git
 from fabric_core.utils import load_config
 
 # Ensure UTF-8 encoding for stdout to support Unicode characters (like checkmarks)
@@ -124,9 +125,18 @@ def main():
             if github_connection_id:
                 log_info("Connecting workspace to Git...")
                 t2 = time.time()
-                connect_workspace_to_git(workspace_id, ws_name,
-                                         folder, git_config, github_connection_id)
+                connected = connect_workspace_to_git(workspace_id, ws_name,
+                                                     folder, git_config, github_connection_id)
                 log_ok(f"Connected to Git ({elapsed(t2)})")
+
+                if connected:
+                    log_info("Syncing content from Git...")
+                    t3 = time.time()
+                    synced = update_workspace_from_git(workspace_id, ws_name)
+                    if synced:
+                        log_ok(f"Git sync done ({elapsed(t3)})")
+                    else:
+                        log_fail(f"Git sync failed ({elapsed(t3)})")
 
     # ── Suspend capacities ───────────────────────────────────────────────────
     log_section("SUSPENDING CAPACITIES")
